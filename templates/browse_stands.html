@@ -1,0 +1,60 @@
+{% extends 'nav.html' %}
+
+{% block head %}
+<title>AeroDB: Browse Stands</title>
+<link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+<style>
+    .scrollable {
+        height: 300px;
+        overflow-y: auto;
+        width: 90%;
+        margin: auto;
+        border: 1px solid #dee2e6;
+        box-shadow: 0 2px 6px 0 rgba(0, 0, 0, .2);
+    }
+
+    .box {
+        margin-bottom: 2rem;
+    }
+
+    .sticky-thead th {
+        position: sticky;
+        top: 0;
+        background-color: #f8f9fa;
+    }
+</style>
+{% endblock %}
+
+{% block body %}
+
+<h2 class="text-center">Stand List</h2>
+
+{% for company in data %}
+<div class="box">
+    <h3 class="text-center">{{ company.company_name }} - {{ company.project_name }} ({{ company.stands|length }})</h3>
+    <div class="scrollable mt-3">
+        <table class="table table-striped">
+            <thead class="thead-dark sticky-thead">
+                <tr>
+                    <th scope="col">#</th>
+                    <th scope="col">ID</th>
+                    <th scope="col">ACRES</th>
+                    <th scope="col">Location</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for stand in company.stands %}
+                <tr>
+                    <td>{{ loop.index }}</td>
+                    <td>{{ stand.ID }}</td>
+                    <td>{{ stand.ACRES }}</td>
+                    <td>{{ stand.LOCATION }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endfor %}
+
+{% endblock %}
