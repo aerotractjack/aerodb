@@ -1,0 +1,14 @@
+[Unit] 
+Description=Serve API for handling aerotract_db requests
+After=network.target
+
+[Service]
+User=aerotract
+WorkingDirectory=/home/aerotract/software/aerotract_db/api
+ExecStart=/home/aerotract/software/aerotract_db/api/run.sh
+Restart=always
+Environment=PYTHONPATH=/home/aerotract/aerotract_db/db
+EnvironmentFile=/home/aerotract/software/aerotract_db/api/env.secret
+
+[Install]
+WantedBy=multi-user.target

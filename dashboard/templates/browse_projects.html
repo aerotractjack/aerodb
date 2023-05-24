@@ -28,9 +28,9 @@
 <h2 class="text-center">Project List</h2>
 
 <form id="standForm" action="/browse/stands" method="post">
-    {% for company in companies %}
+    {% for company in projects %}
     <div class="box">
-        <h3 class="text-center">{{ company.client_name }} ({{ company.projects|length }})</h3>
+        <h3 class="text-center">{{ client_id_map[company.CLIENT_ID] }}: {{ company.CLIENT_ID }} ({{ company.projects|length }})</h3>
         <div class="scrollable mt-3">
             <table class="table table-striped">
                 <thead class="thead-dark sticky-thead">
@@ -39,6 +39,7 @@
                         <th scope="col">#</th>
                         <th scope="col">ID</th>
                         <th scope="col">Name</th>
+                        <th scope="col"># Stands</th>
                         <th scope="col">Creation Date</th>
                         <th scope="col">Notes</th>
                         <th scope="col">Questions</th>
@@ -48,10 +49,11 @@
                     {% for project in company.projects %}
                     <tr>
                         <td><input type="checkbox" name="projectCheck"
-                                value="{{ project.ID }}*{{ project.NAME }}*{{ company.client_name }}"></td>
+                                value="{{ project.PROJECT_ID }}"></td>
                         <td>{{ loop.index }}</td>
-                        <td>{{ project.ID }}</td>
-                        <td>{{ project.NAME }}</td>
+                        <td>{{ project.PROJECT_ID }}</td>
+                        <td>{{ project.PROJECT_NAME }}</td>
+                        <td>{{ project.STAND_IDS.split(',')|length }}</td>
                         <td>{{ project.CREATION_DATA }}</td>
                         <td>{{ project.NOTES }}</td>
                         <td>{{ project.QUESTIONS }}</td>

@@ -1,0 +1,12 @@
+[Unit] 
+Description=Serve API for handling aerotract_db requests
+After=network.target
+
+[Service]
+User=aerotract
+WorkingDirectory=/home/aerotract/software/aerotract_db/dashboard
+ExecStart=/home/aerotract/software/aerotract_db/dashboard/run.sh
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
