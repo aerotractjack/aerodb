@@ -147,37 +147,56 @@ class AeroDB:
         )
         return projects.to_dict("records")
     
-    def projects_by_client(self, client_ids=None, flatten=True):
+    def projects_by_client(self, client_ids=None, key="CLIENT_ID"):
         """
         Retrieves all projects associated with specified client IDs.
 
         Parameters:
         client_ids (list of dict): The client IDs for which to fetch projects.
-        flatten (bool): If True, flattens the result.
+        key (str): key by which to group entries. if None or "", data is not grouped
 
         Returns:
         list of dict: Each dictionary contains details about a project.
         """
-        if client_ids is None:
-            client_ids = self.list_clients()
-        if not isinstance(client_ids, list):
-            client_ids = [client_ids]
-        resp = []
-        for cid in client_ids:
-            company_projects = self.query_table(
-                "SELECT ID as PROJECT_ID, NAME as PROJECT_NAME, CREATION_DATA as DATE, \
-                QUESTIONS, NOTES, STAND_IDS FROM projects where CLIENT_ID = :id",
-                {"id": int(cid["CLIENT_ID"])}
-            )
-            if flatten:
-                for project in company_projects.to_dict("records"):
-                    result = {**cid, **project}
-                    resp.append(result)
-            else:
-                result = cid.copy()
-                result["projects"] = company_projects.to_dict("records")
-                resp.append(result)
-        return resp
+        client_query = "select ID as CLIENT_ID, NAME as CLIENT_NAME from clients"
+        project_query = "select ID as PROJECT_ID, \
+                        NAME as PROJECT_NAME, \
+                        STAND_IDS, CLIENT_ID, \
+                        CREATION_DATA as PROJECT_CREATION_DATA from projects"
+        client_query_params = None
+        if client_ids is not None:
+            placeholders = ",".join(["?"] * len(client_ids))
+            client_query += f" where ID in ({placeholders})"
+            project_query += f" where CLIENT_ID in ({placeholders})"
+            client_query_params = client_ids
+        cli = self.query_table(client_query, client_query_params)
+        pro = self.query_table(project_query, client_query_params)
+        df = pro.merge(cli, left_on="CLIENT_ID", right_on="CLIENT_ID", how="left")
+        if key is None or len(key) == 0:
+            return df.to_dict("records")
+        out = {}
+        for v in df[key].unique():
+            out[str(v)] = df[df[key] == v].to_dict("records")
+        return out
+    
+    def stands_by_project(self, project_ids=None, key=None):
+        project_query = "select ID as PROJECT_ID, \
+                        NAME as PROJECT_NAME, \
+                        STAND_IDS, CLIENT_ID, \
+                        CREATION_DATA as PROJECT_CREATION_DATA from projects"
+        project_query_params = None
+        if project_ids is not None:
+            placeholders = ",".join(["?"] * len(project_ids))
+            project_query += f" where ID in ({placeholders})"
+            project_query_params = project_ids
+        pro = self.query_table(project_query, project_query_params)
+        if key is None or len(key) == 0:
+            return pro.to_dict("records")
+        out = {}
+        for v in pro[key].unique():
+            out[str(v)] = pro[pro[key] == v].to_dict("records")
+        return out
+        
     
     def lookup_stand(self, stand_id):
         """
@@ -198,7 +217,7 @@ class AeroDB:
         stand = stand.to_dict("records")
         return stand
     
-    def stands_for_project(self, project_ids=None, flatten=False):
+    def stands_for_project(self, project_ids=None, flatten=False, NAS=True):
         """
         Retrieves all stands associated with the given project IDs.
 
@@ -267,5 +286,5 @@ class AeroDB:
 if __name__ == "__main__":
     import json
     db = AeroDB()
-    data = db.stands_for_project()
+    data = db.stands_by_project(project_ids=[101017, 101018])
     print(json.dumps(data, indent=4))

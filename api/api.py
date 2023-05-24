@@ -20,7 +20,7 @@ def name(category, uid):
 @app.route("/api/projects")
 def projects_for_client():
     client_ids = request.args.get("client_id", None)
-    flatten = bool(request.args.get("flatten", False))
+    flatten = bool(request.args.get("key", "CLIENT_ID"))
     if client_ids is not None and len(client_ids) > 0:
         client_ids = [{"CLIENT_ID": c} for c in client_ids.split(",")]
     projects = db.projects_by_client(client_ids, flatten)
