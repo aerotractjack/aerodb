@@ -26,45 +26,45 @@ def create_clients_db(raw_data_path="data/clients-raw.csv"):
     df = pd.read_csv(raw_data_path)
     # rename the cols to more appropriate SQL column names and define types
     df_cols = ["Client ID", "Client Name", "Category", "Client Creation Data", "Notes"]
-    table_cols = ["ID", "NAME", "CATEGORY", "CREATION_DATA", "NOTES"]
+    table_cols = ["CLIENT_ID", "CLIENT_NAME", "CATEGORY", "CLIENT_CREATION_DATA", "CLIENT_NOTES"]
     dtypes = [BigInteger, String(50), String(50), Date, String(255)]
     dtypes_map = {c: d for c,d in zip(table_cols, dtypes)}
     df = df[df_cols]
     df.columns = table_cols
     # set an index for our DF and SQL table
-    df.set_index("ID", inplace=True)
+    df.set_index("CLIENT_ID", inplace=True)
     # clean some values
-    df["CREATION_DATA"] = pd.to_datetime(df["CREATION_DATA"])
-    df = cleanstr(df, "NAME")
+    df["CLIENT_CREATION_DATA"] = pd.to_datetime(df["CLIENT_CREATION_DATA"])
+    df = cleanstr(df, "CLIENT_NAME")
     engine = get_engine()
-    df.to_sql('clients', con=engine, if_exists='replace', dtype=dtypes_map, index_label="ID")
+    df.to_sql('clients', con=engine, if_exists='replace', dtype=dtypes_map, index_label="CLIENT_ID")
 
 def match_client_names(df):
     # given a df with "CLIENT_ID" being the client name, return a list of matching IDs
     client_conn = get_connection()
     query_ids = []
     for _, c in df.iterrows():
-        query = "SELECT id FROM clients where name = :name"
+        query = "SELECT client_id FROM clients where client_name = :name"
         id_query = pd.read_sql(query, client_conn, params={"name": c["CLIENT_ID"]})
-        query_ids.append(id_query["ID"][0])
+        query_ids.append(id_query["CLIENT_ID"][0])
     return query_ids
 
 def create_projects_db(raw_data_path="data/projects-raw.csv"):
     df = pd.read_csv(raw_data_path)
     df_cols = ["Project ID", "Client Name", "Project Name", "Project Creation Date", "Questions", "Notes"]
-    table_cols = ["ID", "CLIENT_ID", "NAME", "CREATION_DATA", "QUESTIONS", "NOTES"]
+    table_cols = ["PROJECT_ID", "CLIENT_ID", "PROJECT_NAME", "PROJECT_CREATION_DATA", "PROJECT_QUESTIONS", "PROJECT_NOTES"]
     df = df[df_cols]
     df.columns = table_cols
-    df.set_index("ID", inplace=True)
-    df["CREATION_DATA"] = pd.to_datetime(df["CREATION_DATA"])
-    df = cleanstr(df, "NAME")
+    df.set_index("PROJECT_ID", inplace=True)
+    df["PROJECT_CREATION_DATA"] = pd.to_datetime(df["PROJECT_CREATION_DATA"])
+    df = cleanstr(df, "PROJECT_NAME")
     df = cleanstr(df, "CLIENT_ID")
     # perform the client ID match and replace names with IDs
     df["CLIENT_ID"] = match_client_names(df)
     dtypes = [BigInteger, BigInteger, String(50), Date, String(255), String(255)]
     dtypes_map = {c: d for c,d in zip(table_cols, dtypes)}
     engine = get_engine()
-    df.to_sql('projects', con=engine, if_exists='replace', dtype=dtypes_map, index_label="ID")
+    df.to_sql('projects', con=engine, if_exists='replace', dtype=dtypes_map, index_label="PROJECT_ID")
 
 def match_project_names(df):
     # given a df with "PROJECT_ID" being the name and "CLIENT_ID" being the ID, return a list
@@ -74,7 +74,7 @@ def match_project_names(df):
     pquery = pd.read_sql(query, project_conn)
     pquery_ids = []
     for _, c in df.iterrows():
-        projmask = pquery["NAME"] == c["PROJECT_ID"]
+        projmask = pquery["PROJECT_NAME"] == c["PROJECT_ID"]
         climask = pquery["CLIENT_ID"] == c["CLIENT_ID"]
         msg = ""
         if projmask.sum() == 0:
@@ -91,32 +91,37 @@ def match_project_names(df):
         if len(pq) == 0:
             pquery_ids.append(-1)
         else:
-            pquery_ids.append(pq.iloc[0]["ID"])
+            pquery_ids.append(pq.iloc[0]["PROJECT_ID"])
     return pquery_ids
 
 def load_and_process_activeprojects(raw_data_path="data/activeprojects-raw.csv"):
     df = pd.read_csv(raw_data_path)
     df_cols = ["Client", "Project", "ID", "Site", "Acres"]
     df = df[df_cols]
-    table_cols = ["CLIENT_ID", "PROJECT_ID", "ID", "NAME", "ACRES"]
+    table_cols = ["CLIENT_ID", "PROJECT_ID", "STAND_ID", "STAND_NAME", "ACRES"]
     df.columns = table_cols
     df = cleanstr(df, "CLIENT_ID")
     df = cleanstr(df, "PROJECT_ID")
-    df = cleanstr(df, "NAME")
+    df = cleanstr(df, "STAND_NAME")
     df["CLIENT_ID"] = match_client_names(df)
     df["PROJECT_ID"] = match_project_names(df)
-    df["PERSISTENT_ID"] = list(range(1000000, df.shape[0]+1000000))
+    df["STAND_PERSISTENT_ID"] = list(range(1000000, df.shape[0]+1000000))
     table_cols = df.columns
     return df
 
 def create_stands_from_activeprojects_db(raw_data_path="data/activeprojects-raw.csv"):
+    engine = get_engine()
     df = load_and_process_activeprojects(raw_data_path)
+    stand_proj_df = df[["STAND_PERSISTENT_ID", "PROJECT_ID"]]
+    stand_proj_df.set_index("STAND_PERSISTENT_ID", inplace=True)
+    sp_dtypes = [BigInteger, BigInteger]
+    sp_dtypes_map = {c: d for c,d in zip(stand_proj_df.columns, sp_dtypes)}
+    stand_proj_df.to_sql('stand_project_ids', con=engine, if_exists='replace', dtype=sp_dtypes_map, index_label="STAND_PERSISTENT_ID")
     del df["PROJECT_ID"]
     dtypes = [BigInteger, BigInteger, String(50), Float]
     dtypes_map = {c: d for c,d in zip(df.columns, dtypes)}
-    df.set_index("PERSISTENT_ID", inplace=True)
-    engine = get_engine()
-    df.to_sql('stands', con=engine, if_exists='replace', dtype=dtypes_map, index_label="PERSISTENT_ID")
+    df.set_index("STAND_PERSISTENT_ID", inplace=True)
+    df.to_sql('stands', con=engine, if_exists='replace', dtype=dtypes_map, index_label="STAND_PERSISTENT_ID")
 
 def add_stand_ids_to_projects_db():
     project_conn = get_connection()
@@ -124,15 +129,15 @@ def add_stand_ids_to_projects_db():
     projects = pd.read_sql(query, project_conn)
     stands = load_and_process_activeprojects()
     stand_ids = []
-    for project in projects["ID"].unique():
+    for project in projects["PROJECT_ID"].unique():
         proj_stands = stands[stands["PROJECT_ID"] == project]
-        uids = proj_stands["PERSISTENT_ID"].unique()
+        uids = proj_stands["STAND_PERSISTENT_ID"].unique()
         proj_stand_ids = ",".join([str(x) for x in uids])
         stand_ids.append(proj_stand_ids)
-    projects["STAND_IDS"] = stand_ids
+    projects["STAND_PERSISTENT_IDS"] = stand_ids
     engine = get_engine()
-    projects.set_index("ID", inplace=True)
-    projects.to_sql('projects', con=engine, if_exists='replace', index_label="ID")
+    projects.set_index("PROJECT_ID", inplace=True)
+    projects.to_sql('projects', con=engine, if_exists='replace', index_label="PROJECT_ID")
     print(projects.head())
 
 if __name__ == "__main__":

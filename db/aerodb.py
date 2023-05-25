@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 from sqlalchemy import create_engine
 
+
 class AeroDB:
 
     def __init__(self, dev=True):
@@ -13,7 +14,8 @@ class AeroDB:
         Parameters:
         dev (bool): If True, uses a sandbox path for development purposes.
         """
-        base = os.getenv("AERODB_DIR") if not dev else "/home/aerotract/.sandbox"
+        base = os.getenv(
+            "AERODB_DIR") if not dev else "/home/aerotract/.sandbox"
         self.base = Path(base)
 
     def con(self, db="aerodb"):
@@ -59,7 +61,7 @@ class AeroDB:
         query = f"SELECT * FROM {name}"
         return pd.read_sql(query, conn)
 
-    def query_table(self, query=None, params=None, json=False):
+    def execute_query(self, query=None, params=None, json=False):
         """
         Executes a query on the SQLite database.
 
@@ -79,212 +81,324 @@ class AeroDB:
             data = data.to_dict("records")
         return data
 
-    def list_clients(self):
+    def get_id_col(self, table):
         """
-        Retrieves a list of all clients in the database.
+        Returns the name of the ID column of the given table.
+
+        Parameters:
+        table (str): The name of the table.
 
         Returns:
-        list of dict: Each dictionary represents a client, with keys 
-                      'CLIENT_ID' and 'CLIENT_NAME'.
+        str: The name of the ID column.
         """
-        clients = self.query_table(
-            "SELECT ID as CLIENT_ID, NAME as CLIENT_NAME FROM clients;"
-        )
-        return clients.to_dict("records")
+        if table == "clients":
+            col = "CLIENT_ID"
+        elif table == "projects":
+            col = "PROJECT_ID"
+        elif table == "stands":
+            col = "STAND_PERSISTENT_ID"
+        return col
+    
+    def get_name_col(self, table):
+        """
+        Returns the name of the name column of the given table.
+
+        Parameters:
+        table (str): The name of the table.
+
+        Returns:
+        str: The name of the name column.
+        """
+        return table.strip("s").upper() + "_NAME"
     
     def id_to_name(self, table, uid):
-        res = self.query_table(
-            f"SELECT NAME FROM {table} WHERE id = :id",
+        """
+        Returns the name of the given ID in the given table.
+
+        Parameters:
+        table (str): The name of the table.
+        uid: The ID to convert to a name.
+
+        Returns:
+        str: The name corresponding to the given ID.
+        """
+        idcol = self.get_id_col(table)
+        namecol = self.get_name_col(table)
+        res = self.execute_query(
+            f"SELECT {namecol} FROM {table} WHERE {idcol} = :id",
             {"id": uid},
             json=True
         )
         return res[0]["NAME"]
-
-    def add_client(self, name, category, creation_data, notes):
+    
+    def list_table(self, table, cols="*"):
         """
-        Inserts a new client into the database.
+        Retrieves specified columns from the given table.
 
         Parameters:
-        name (str): The name of the client.
-        category (str): The category of the client.
-        creation_data (str): The creation data of the client.
-        notes (str): Any additional notes.
+        table (str): The name of the table.
+        cols (str or list): The columns to retrieve. If '*', retrieves all columns.
 
         Returns:
-        dict: The newly added client represented as a dictionary.
+        pandas.DataFrame: The requested columns from the table.
         """
-        conn = self.con()
-        cursor = conn.cursor()
-        cmd = "INSERT INTO clients \
-        (ID, NAME, CATEGORY, CREATION_DATA, NOTES) \
-        VALUES (?, ?, ?, ?, ?)"
-        client_id = self.query_table(
-            "clients",
-            "SELECT MAX(ID) FROM clients"
-        ).iloc[0].values[0] + 1
-        client_id = int(client_id)
-        cursor.execute(cmd, (client_id, name, category, creation_data, notes))
-        conn.commit()
-        cursor.close()
-        conn.close()
-        new_client = self.query_table(
-            "clients",
-            "SELECT * FROM clients WHERE ID = :id",
-            {"id": client_id}
-        ).to_dict("records")[0]
-        return new_client
-    
-    def list_projects(self):
-        """
-        Retrieves a list of all projects in the database.
-
-        Returns:
-        list of dict: Each dictionary represents a project, with keys 
-                      'PROJECT_ID' and 'PROJECT_NAME'.
-        """
-        projects = self.query_table(
-            "SELECT ID as PROJECT_ID, NAME as PROJECT_NAME FROM projects"
-        )
-        return projects.to_dict("records")
-    
-    def projects_by_client(self, client_ids=None, key="CLIENT_ID"):
-        """
-        Retrieves all projects associated with specified client IDs.
-
-        Parameters:
-        client_ids (list of dict): The client IDs for which to fetch projects.
-        key (str): key by which to group entries. if None or "", data is not grouped
-
-        Returns:
-        list of dict: Each dictionary contains details about a project.
-        """
-        client_query = "select ID as CLIENT_ID, NAME as CLIENT_NAME from clients"
-        project_query = "select ID as PROJECT_ID, \
-                        NAME as PROJECT_NAME, \
-                        STAND_IDS, CLIENT_ID, \
-                        CREATION_DATA as PROJECT_CREATION_DATA from projects"
-        client_query_params = None
-        if client_ids is not None:
-            placeholders = ",".join(["?"] * len(client_ids))
-            client_query += f" where ID in ({placeholders})"
-            project_query += f" where CLIENT_ID in ({placeholders})"
-            client_query_params = client_ids
-        cli = self.query_table(client_query, client_query_params)
-        pro = self.query_table(project_query, client_query_params)
-        df = pro.merge(cli, left_on="CLIENT_ID", right_on="CLIENT_ID", how="left")
-        if key is None or len(key) == 0:
-            return df.to_dict("records")
-        out = {}
-        for v in df[key].unique():
-            out[str(v)] = df[df[key] == v].to_dict("records")
-        return out
-    
-    def stands_by_project(self, project_ids=None, key=None):
-        project_query = "select ID as PROJECT_ID, \
-                        NAME as PROJECT_NAME, \
-                        STAND_IDS, CLIENT_ID, \
-                        CREATION_DATA as PROJECT_CREATION_DATA from projects"
-        project_query_params = None
-        if project_ids is not None:
-            placeholders = ",".join(["?"] * len(project_ids))
-            project_query += f" where ID in ({placeholders})"
-            project_query_params = project_ids
-        pro = self.query_table(project_query, project_query_params)
-        if key is None or len(key) == 0:
-            return pro.to_dict("records")
-        out = {}
-        for v in pro[key].unique():
-            out[str(v)] = pro[pro[key] == v].to_dict("records")
-        return out
-        
-    
-    def lookup_stand(self, stand_id):
-        """
-        Retrieves information about a stand from the database.
-
-        Parameters:
-        stand_id (str): The ID of the stand.
-
-        Returns:
-        list of dict: Each dictionary represents a stand with all its details.
-        """
-        if stand_id is None or stand_id == "":
-            return []
-        stand = self.query_table(
-            "SELECT * FROM stands WHERE PERSISTENT_ID = :id", 
-            {"id": stand_id}
-        )
-        stand = stand.to_dict("records")
-        return stand
-    
-    def stands_for_project(self, project_ids=None, flatten=False, NAS=True):
-        """
-        Retrieves all stands associated with the given project IDs.
-
-        Parameters:
-        project_ids (list of dict): The project IDs for which to fetch stands.
-        flatten (bool): If True, flattens the result.
-
-        Returns:
-        list of dict: Each dictionary contains details about a stand.
-        """
-        if project_ids is None:
-            project_ids = self.list_projects()
-        if not isinstance(project_ids, list):
-            project_ids = [project_ids]
-        resp = []
-        for pid in project_ids:
-            project = self.query_table(
-                "SELECT * FROM projects WHERE ID = :id",
-                {"id": pid["PROJECT_ID"]}
-            ).to_dict("records")[0]
-            stand_ids = project["STAND_IDS"].split(",")
-            if project["STAND_IDS"] == "":
-                continue
-            stands = []
-            stands = [self.lookup_stand(sid)[0] for sid in stand_ids]
-            if flatten:
-                for stand in stands:
-                    result = {**pid, **stand}
-                    resp.append(result)
-            else:
-                result = pid.copy()
-                result["stands"] = stands
-                resp.append(result)
-        return resp
-    
-    def NAS_info_for_stand(self, client_id, project_id, stand_temp_id):
-        """
-        Retrieves Network Attached Storage (NAS) information for a stand 
-        related to a specific client and project.
-
-        Parameters:
-        client_id (int): The ID of the client.
-        project_id (int): The ID of the project.
-        stand_temp_id (int): The temporary ID of the stand.
-
-        Returns:
-        list of dict: Each dictionary represents a match, with keys indicating 
-                      the relevant directories and whether they exist.
-        """
-        base = Path("/home/aerotract/NAS/main/Clients")
-        globstr = f"{client_id}_*/{project_id}_*/{stand_temp_id}_*"
-        matches = list(base.glob(globstr))
-        if len(matches) == 0:
-            return None
-        result = []
-        for match in matches:
-            res = {}
-            res["ortho_dir"] = (match / "Data" / "ortho").as_posix()
-            res["src_img_dir"] = (match / "Data" / "src_imgs").as_posix()
-            res["ml_result_dir"] = (match / "ML_results").as_posix()
-            res["ortho_exists"] = len(os.listdir(res["ortho_dir"])) > 0
-            res["src_img_exists"] = len(os.listdir(res["src_img_dir"])) > 0
-            result.append(res)
+        if isinstance(cols, list):
+            cols = ", ".join(cols)
+        query = f"SELECT {cols} FROM {table}"
+        result = self.execute_query(query)
         return result
     
+    def where_table_equal(self, table, search, match, cols="*"):
+        """
+        Retrieves rows where the specified column equals a given value.
+
+        Parameters:
+        table (str): The name of the table.
+        search (str): The column to search.
+        match: The value to match.
+        cols (str or list): The columns to retrieve. If '*', retrieves all columns.
+
+        Returns:
+        pandas.DataFrame: The rows where the specified column equals the given value.
+        """
+        if isinstance(cols, list):
+            cols = ", ".join(cols)
+        query = f"SELECT {cols} FROM {table} WHERE {search} = ?"
+        result = self.execute_query(query, params=(match,))
+        return result
+    
+    def where_table_in(self, table, search, match, cols="*"):
+        """
+        Retrieves rows where the specified column is in a list of values.
+
+        Parameters:
+        table (str): The name of the table.
+        search (str): The column to search.
+        match (list): The values to match.
+        cols (str or list): The columns to retrieve. If '*', retrieves all columns.
+
+        Returns:
+        pandas.DataFrame: The rows where the specified column is in the list of values.
+        """
+        if not isinstance(match, list):
+            match = [match]
+        plc = ", ".join(["?"] * len(match))
+        if isinstance(cols, list):
+            cols = ", ".join(cols)
+        query = f"SELECT {cols} FROM {table} WHERE {search} in ({plc})"
+        result = self.execute_query(query, params=match)
+        return result
+    
+    def where_table_like(self, table, search, match, cols="*"):
+        """
+        Retrieves rows where the specified column contains a given string.
+
+        Parameters:
+        table (str): The name of the table.
+        search (str): The column to search.
+        match (str): The string to match.
+        cols (str or list): The columns to retrieve. If '*', retrieves all columns.
+
+        Returns:
+        pandas.DataFrame: The rows where the specified column contains the given string.
+        """
+        match = f"%{match}%"
+        if isinstance(cols, list):
+            cols = ", ".join(cols)
+        query = f"SELECT {cols} FROM {table} WHERE {search} LIKE ?"
+        result = self.execute_query(query, params=(match,))
+        return result
+    
+    def where_table_between(self, table, search, match, cols="*"):
+        """
+        Retrieves rows where the specified column falls within a range of values.
+
+        Parameters:
+        table (str): The name of the table.
+        search (str): The column to search.
+        match (tuple): The range of values to match.
+        cols (str or list): The columns to retrieve. If '*', retrieves all columns.
+
+        Returns:
+        pandas.DataFrame: The rows where the specified column is within the range of values.
+        """
+        if isinstance(cols, list):
+            cols = ", ".join(cols)
+        query = f"SELECT {cols} FROM {table} WHERE {search} BETWEEN ? AND ?"
+        result = self.execute_query(query, params=match)
+        return result
+    
+    def get_ids(self, table, ids):
+        """
+        Retrieves a list of IDs from a table. If IDs are provided, it validates them against the table.
+
+        Parameters:
+        table (str): The name of the table.
+        ids (list, optional): The IDs to retrieve or validate. If None, retrieves all IDs from the table.
+
+        Returns:
+        list: The list of IDs.
+        """
+        if isinstance(ids, int):
+            ids = str(ids)
+        if ids is None or len(ids) == 0:
+            id_col = self.get_id_col(table)
+            ids = self.get_table(table)[id_col].unique().tolist()
+        if not isinstance(ids, list):
+            ids = [ids]
+        return ids
+
+    def client_projects(self, client_ids=None):
+        """
+        Retrieves all projects for specified clients.
+
+        Parameters:
+        client_ids (list, optional): The IDs of the clients. If None, retrieves projects for all clients.
+
+        Returns:
+        dict: A dictionary mapping client IDs to a list of their projects.
+        """
+        client_ids = self.get_ids("clients", client_ids)
+        projects = {}
+        for client_id in client_ids:
+            client_projects = self.where_table_equal(
+                "projects", "CLIENT_ID", client_id
+            )
+            projects[str(client_id)] = client_projects.to_dict("records")
+        return projects
+    
+    def project_stands(self, project_ids=None):
+        """
+        Retrieves all stands for specified projects.
+
+        Parameters:
+        project_ids (list, optional): The IDs of the projects. If None, retrieves stands for all projects.
+
+        Returns:
+        dict: A dictionary mapping project IDs to a list of their stands.
+        """
+        project_ids = self.get_ids("projects", project_ids)
+        projects = self.where_table_in(
+            "projects", "PROJECT_ID", project_ids
+        )
+        projects = projects.to_dict("records")
+        stands = {}
+        for project in projects:
+            project_stand_list = project["STAND_PERSISTENT_IDS"]
+            if len(project_stand_list) == 0 or project_stand_list is None:
+                continue
+            project_stand_list = project_stand_list.split(",")
+            project_stands = self.where_table_in(
+                "stands", "STAND_PERSISTENT_ID", project_stand_list
+            )
+            for ps in project_stands.to_dict("record"):
+                stands[ps["STAND_PERSISTENT_ID"]] = ps
+        return stands
+    
+    def full_stand_data(self, stand_ids=None):
+        """
+        Retrieves all data for specified stands, including associated clients and projects.
+
+        Parameters:
+        stand_ids (list, optional): The IDs of the stands. If None, retrieves data for all stands.
+
+        Returns:
+        list: A list of dictionaries containing stand data.
+        """
+        stand_ids = self.get_ids("stands", stand_ids)
+        stands = self.where_table_in(
+            "stands", "STAND_PERSISTENT_ID", stand_ids
+        )
+        stand_client_ids = stands["CLIENT_ID"].unique().tolist()
+        clients = self.where_table_in("clients", "CLIENT_ID", stand_client_ids)
+        stands = stands.merge(clients, on="CLIENT_ID", how="left")
+        stands = stands.to_dict("records")
+        for i in range(len(stands)):
+            project = self.where_table_like(
+                "projects", "STAND_PERSISTENT_IDS", stands[i]["STAND_PERSISTENT_ID"]
+            ).to_dict("records")
+            if len(project) == 0:
+                continue
+            stands[i] = {**stands[i], **project[0]}
+        return stands
+    
+    def full_stand_data_view(self, data=None, key=None, cols=None):
+        """
+        Creates a view of the stand data, grouped by a specified key.
+
+        Parameters:
+        data (list, optional): The stand data. If None, retrieves all stand data.
+        key (str, optional): The column to group by. If None, returns the ungrouped data.
+        cols (list, optional): The columns to include in the view.
+
+        Returns:
+        dict: A dictionary mapping keys to a list of stand data.
+        """
+        if data is None:
+            data = self.full_stand_data()
+        if key is None:
+            return data
+        data = pd.DataFrame(data)
+        if cols is not None and isinstance(cols, list):
+            if key not in cols:
+                cols.append(key)
+            data = data[cols]
+        uniq = data[key].unique().tolist()
+        view = {}
+        for val in uniq:
+            sel = data[data[key] == val]
+            sel = sel.to_dict("records")
+            view[val] = sel
+        return view
+
+    def client_full_stand_data(self, client_ids=None):
+        """
+        Retrieves full stand data for the specified clients, including associated projects.
+        If no clients are specified, retrieves data for all clients.
+
+        Parameters:
+        client_ids (list, optional): The IDs of the clients. If None, retrieves data for all clients.
+
+        Returns:
+        dict: A dictionary mapping client IDs to a list of full stand data.
+        """
+        client_ids = self.get_ids("clients", client_ids)
+        projects = self.where_table_in(
+            "projects", "CLIENT_ID", client_ids, "STAND_PERSISTENT_IDS"
+        )
+        stand_ids = []
+        for sid in projects["STAND_PERSISTENT_IDS"].tolist():
+            if sid is None or sid == "":
+                continue
+            stand_ids.extend(sid.split(","))
+        stand_data = self.full_stand_data(stand_ids)
+        return self.full_stand_data_view(stand_data, key="CLIENT_ID")
+    
+    def project_full_stand_data(self, project_ids=None):
+        """
+        Retrieves full stand data for the specified projects, including associated clients.
+        If no projects are specified, retrieves data for all projects.
+
+        Parameters:
+        project_ids (list, optional): The IDs of the projects. If None, retrieves data for all projects.
+
+        Returns:
+        dict: A dictionary mapping client IDs to a list of full stand data.
+        """
+        project_ids = self.get_ids("projects", project_ids)
+        projects = self.where_table_in(
+            "projects", "PROJECT_ID", project_ids, "STAND_PERSISTENT_IDS"
+        )
+        stand_ids = []
+        for sid in projects["STAND_PERSISTENT_IDS"].tolist():
+            if sid is None or sid == "":
+                continue
+            stand_ids.extend(sid.split(","))
+        stand_data = self.full_stand_data(stand_ids)
+        return self.full_stand_data_view(stand_data, key="CLIENT_ID")
+
 if __name__ == "__main__":
     import json
     db = AeroDB()
-    data = db.stands_by_project(project_ids=[101017, 101018])
+    data = db.client_full_stand_data([10049, 10050])
     print(json.dumps(data, indent=4))
