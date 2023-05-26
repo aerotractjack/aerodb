@@ -1,6 +1,6 @@
 import pandas as pd
 import sqlite3
-from sqlalchemy import (create_engine, BigInteger, Float, Date, String)
+from sqlalchemy import (create_engine, BigInteger, Float, Date, String, Boolean)
 
 def get_engine(table_name="aerodb"):
     # use an engine to write out a DF to SQL
@@ -138,14 +138,86 @@ def add_stand_ids_to_projects_db():
     engine = get_engine()
     projects.set_index("PROJECT_ID", inplace=True)
     projects.to_sql('projects', con=engine, if_exists='replace', index_label="PROJECT_ID")
-    print(projects.head())
+
+def load_and_process_metadata(raw_data_path="data/projectmeta-raw.csv"):
+    df = pd.read_csv(raw_data_path)
+    df = cleanstr(df, "CLIENT_ID")
+    df = cleanstr(df, "PROJECT_ID")
+    df = cleanstr(df, "STAND_NAME")
+    df["CLIENT_ID"] = match_client_names(df)
+    df["PROJECT_ID"] = match_project_names(df)
+    df["FLIGHT_ID"] = list(range(10000000, df.shape[0]+10000000))
+    df.set_index("FLIGHT_ID", inplace=True)
+    conn = get_connection()
+    stands = pd.read_sql("select * from stands", conn)
+    stand_pids = []
+    for _, row in df.iterrows():
+        stand = stands[(stands["STAND_ID"] == row["STAND_ID"]) & (stands["STAND_NAME"] == row["STAND_NAME"])]
+        stand_pids.append(stand["STAND_PERSISTENT_ID"].values[0])
+    df["STAND_PERSISTENT_ID"] = stand_pids
+    return df
+
+def create_flights_db(raw_data_path="data/projectmeta-raw.csv"):
+    df = load_and_process_metadata(raw_data_path)
+    table_cols = ["CLIENT_ID", "PROJECT_ID", "STAND_PERSISTENT_ID", "FLIGHT_COMPLETE"] # FLIGHT_ID is index
+    df = df[table_cols]
+    dtypes = [BigInteger, BigInteger, BigInteger, Boolean]
+    dtypes_map = {c: d for c,d in zip(df.columns, dtypes)}
+    df.to_sql('flights', con=get_engine(), if_exists='replace', dtype=dtypes_map, index_label="FLIGHT_ID")
+
+def create_flight_ai_db(raw_data_path="data/projectmeta-raw.csv"):
+    df = load_and_process_metadata(raw_data_path)
+    table_cols = ['TRAINING_READY', 'TRAINING_DONE',
+       'AI_READY', 'AI_OUTPUT', 'QA_DONE', 'AI_RESULT_MODELED', 'QC_READY',
+       'AI_TPA', 'QC_PLOT_TPA', 'AI_TREE_COUNT_RED', 'AI_TREE_COUNT_BROWN',
+       'QC_APPROVED', 'CLEANED_AI_TO_PRODUCTS']
+    dtypes = [Boolean, Boolean,
+              Boolean, String(255), Boolean, Boolean, Boolean,
+              Float, Float, Float, Float,
+              Boolean, Boolean]
+    df = df[table_cols]
+    dtypes_map = {c: d for c,d in zip(df.columns, dtypes)}
+    df.to_sql('flight_ai', con=get_engine(), if_exists='replace', dtype=dtypes_map, index_label="FLIGHT_ID")
+
+def create_flight_files_db(raw_data_path="data/projectmeta-raw.csv"):
+    df = load_and_process_metadata(raw_data_path)
+    table_cols = [
+        "FLIGHT_IMAGES_DELIVERED", "FLIGHT_PLANS_NAS", "FLIGHT_IMAGES_DD", "SHP_NAS", "KML_NAS",
+        "INDIVIDUAL_SHP_NAS", "GRID_QA_NAS", "RAW_IMAGES_NAS", "POLYGON_DD",
+        "CROPPED", "SAMPLE_AVAILABLE", "SAMPLE_DD", "ORTHO_4IN_NAS",
+        "ORTHO_PIX4D_NAS", "ORTHO_DD_NAS", "AI_OUTPUT", "NAS_FOLDERS"]
+    dtypes = [
+        Boolean, Boolean, Boolean, Boolean, Boolean,
+        Boolean, Boolean, Boolean, Boolean,
+        Boolean, Boolean, Boolean, Boolean,
+        Boolean, Boolean, String(255), Boolean
+    ]
+    df = df[table_cols]
+    dtypes_map = {c: d for c,d in zip(df.columns, dtypes)}
+    df.to_sql('flight_files', con=get_engine(), if_exists='replace', dtype=dtypes_map, index_label="FLIGHT_ID")
+
+def check_columns():
+    meta = load_and_process_metadata()
+    flights = pd.read_sql("select * from flights", get_connection())
+    ai = pd.read_sql("select * from flight_ai", get_connection())
+    files = pd.read_sql("select * from flight_files", get_connection())
+    print(len(meta.columns))
+    cols = []
+    for x in [flights, ai, files]:
+        cols.extend(x.columns.tolist())
+    print(len(cols))
+    print(set(meta.columns) - set(cols))
 
 if __name__ == "__main__":
     order = [ 
         create_clients_db,
         create_projects_db,
         create_stands_from_activeprojects_db,
-        add_stand_ids_to_projects_db
+        add_stand_ids_to_projects_db,
+        create_flights_db,
+        create_flight_ai_db,
+        create_flight_files_db,
+        check_columns,
     ]
 
     for fn in order:
