@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>{{ data.description }}</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.0/css/bootstrap.min.css">
+  </head>
+  <body>
+    <div class="container">
+      <h1>{{ data.description }}</h1>
+      {% for endpoint, details in data.functions.items() %}
+        <div class="card">
+          <div class="card-body">
+            <h2 class="card-title">{{ details.description }}</h2>
+            <form action="/view/{{ endpoint }}" method="post">
+              <input type="text" name="search" value="{{ search }}">
+              <button type="submit" class="btn btn-primary">Select</button>
+            </form>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  </body>
+</html>

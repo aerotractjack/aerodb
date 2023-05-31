@@ -1,5 +1,20 @@
-{% extends 'nav.html' %}
-
-{% block head %}
-<title>AeroDB Homepage</title>
-{% endblock %}
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Home</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.0/css/bootstrap.min.css">
+  </head>
+  <body>
+    <div class="container">
+      <h1>Welcome!</h1>
+      <p>Please choose a view:</p>
+      <ul class="list-group">
+        {% for name, view_endpoint in views.items() %}
+          <li class="list-group-item">
+            <a href="{{ url_for('browse', values=[view_endpoint]) }}">{{ name }}</a>
+          </li>
+        {% endfor %}
+      </ul>
+    </div>
+  </body>
+</html>

@@ -4,6 +4,8 @@ import os
 from pathlib import Path
 from sqlalchemy import create_engine
 import json
+import sys
+
 
 class AeroDB:
 
@@ -49,6 +51,15 @@ class AeroDB:
         path = "sqlite:///" + path
         return create_engine(path)
 
+    def handle_output(self, data, json_out=False):
+        if json_out and isinstance(data, pd.DataFrame):
+            data = data.to_dict("records")
+        elif not json_out and isinstance(data, dict):
+            data = {k: pd.DataFrame(v) for k,v in data.items()}
+        elif not json_out and isinstance(data, list):
+            data = pd.DataFrame(data)
+        return data
+
     # query helper functions
 
     def get_table(self, name, json_out=False):
@@ -64,11 +75,9 @@ class AeroDB:
         conn = self.con()
         query = f"SELECT * FROM {name}"
         data = pd.read_sql(query, conn)
-        if json_out:
-            return data.to_dict("records")
-        return data
+        return self.handle_output(data, json_out)
 
-    def execute_query(self, query=None, params=None, json_out=False):
+    def execute_query(self, query=None, params=None, json_out=True):
         """
         Executes a query on the SQLite database.
 
@@ -84,9 +93,7 @@ class AeroDB:
         if query is None:
             query = f"SELECT * FROM clients;"
         data = pd.read_sql(query, conn, params=params)
-        if json_out:
-            data = data.to_dict("records")
-        return data
+        return self.handle_output(data, json_out)
 
     def get_id_col(self, table):
         """
@@ -107,7 +114,7 @@ class AeroDB:
         elif table in ["flights", "flight_ai", "flight_files"]:
             return "FLIGHT_ID"
         raise ValueError(f"No table: {table}")
-    
+
     def get_name_col(self, table):
         """
         Returns the name of the name column of the given table.
@@ -119,7 +126,7 @@ class AeroDB:
         str: The name of the name column.
         """
         return table.strip("s").upper() + "_NAME"
-    
+
     def id_to_name(self, table, uid):
         """
         Returns the name of the given ID in the given table.
@@ -139,7 +146,7 @@ class AeroDB:
             json=True
         )
         return res[0]["NAME"]
-    
+
     def list_table(self, table, cols="*", json_out=False):
         """
         Retrieves specified columns from the given table.
@@ -156,7 +163,7 @@ class AeroDB:
         query = f"SELECT {cols} FROM {table}"
         result = self.execute_query(query, json_out=json_out)
         return result
-    
+
     def where_table_equal(self, table, search, match, cols="*", dry=False, json_out=False):
         """
         Retrieves rows where the specified column equals a given value.
@@ -178,7 +185,7 @@ class AeroDB:
             return query, query[query.index("WHERE")+5:], params
         result = self.execute_query(query, params=params, json_out=json_out)
         return result
-    
+
     def where_table_in(self, table, search, match, cols="*", dry=False, json_out=False):
         """
         Retrieves rows where the specified column is in a list of values.
@@ -203,7 +210,7 @@ class AeroDB:
             return query, query[query.index("WHERE")+6:], params
         result = self.execute_query(query, params=params, json_out=json_out)
         return result
-    
+
     def where_table_like(self, table, search, match, cols="*", dry=False, json_out=False):
         """
         Retrieves rows where the specified column contains a given string.
@@ -226,7 +233,7 @@ class AeroDB:
             return query, query[query.index("WHERE")+6:], params
         result = self.execute_query(query, params=params, json_out=json_out)
         return result
-    
+
     def where_table_between(self, table, search, match, cols="*", dry=False, json_out=False):
         """
         Retrieves rows where the specified column falls within a range of values.
@@ -248,8 +255,8 @@ class AeroDB:
             return query, query[query.index("WHERE")+5:], params
         result = self.execute_query(query, params=params, json_out=json_out)
         return result
-    
-    def query_from_json(self, jq, json_out=True):
+
+    def query_from_json(self, jq, json_out=False):
         """
         Executes a SQL query constructed from a JSON object and retrieves the results.
 
@@ -287,18 +294,21 @@ class AeroDB:
             if i > 0:
                 query += f" {q['logic']} "
             if qtype.upper() == "EQUAL":
-                _, qs, ps = self.where_table_equal(table, search, match, dry=True)
+                _, qs, ps = self.where_table_equal(
+                    table, search, match, dry=True)
             elif qtype.upper() == "IN":
-                 _, qs, ps = self.where_table_in(table, search, match, dry=True)
+                _, qs, ps = self.where_table_in(table, search, match, dry=True)
             elif qtype.upper() == "LIKE":
-                 _, qs, ps = self.where_table_like(table, search, match, dry=True)
+                _, qs, ps = self.where_table_like(
+                    table, search, match, dry=True)
             elif qtype.upper() == "BETWEEN":
-                 _, qs, ps = self.where_table_between(table, search, match, dry=True)
+                _, qs, ps = self.where_table_between(
+                    table, search, match, dry=True)
             query += qs
             params.extend(ps)
         result = self.execute_query(query, params, json_out=json_out)
         return result
-    
+
     def get_ids(self, table, ids):
         """
         Retrieves a list of IDs from a table. If IDs are provided, it validates them against the table.
@@ -319,9 +329,21 @@ class AeroDB:
             ids = [ids]
         return ids
 
+    def get_table_by_ids(self, table, ids=None, json_out=False):
+        idcol = self.get_id_col(table)
+        if ids is None:
+            table = self.get_table(table, json_out=True)
+        else:
+            table = self.where_table_in(table, idcol,
+                                        ids, json_out=True)
+        return self.handle_output(table, json_out=json_out)
+
     # CLIENT queries
 
-    def client_projects(self, client_ids=None):
+    def clients(self, client_ids=None, json_out=True):
+        return self.get_table_by_ids("clients", client_ids, json_out)
+
+    def client_projects(self, client_ids=None, json_out=True):
         """
         Retrieves all projects for specified clients.
 
@@ -332,15 +354,18 @@ class AeroDB:
         dict: A dictionary mapping client IDs to a list of their projects.
         """
         client_ids = self.get_ids("clients", client_ids)
-        projects = {}
-        for client_id in client_ids:
+        clients = self.where_table_in("clients", "CLIENT_ID", client_ids, json_out=True)
+        projects = []
+        for i in range(len(clients)):
             client_projects = self.where_table_equal(
-                "projects", "CLIENT_ID", client_id
+                "projects", "CLIENT_ID", clients[i]["CLIENT_ID"]
             )
-            projects[str(client_id)] = client_projects.to_dict("records")
-        return projects
-    
-    def client_full_stand_data(self, client_ids=None):
+            for cp in client_projects.to_dict("records"):
+                proj = {**clients[i], **cp}
+                projects.append(proj)
+        return self.data_view(projects, key="CLIENT_ID", json_out=json_out)
+
+    def client_stands_full_data(self, client_ids=None, json_out=True):
         """
         Retrieves full stand data for the specified clients, including associated projects.
         If no clients are specified, retrieves data for all clients.
@@ -360,21 +385,24 @@ class AeroDB:
             if sid is None or sid == "":
                 continue
             stand_ids.extend(sid.split(","))
-        stand_data = self.full_stand_data(stand_ids)
-        return self.data_view(stand_data, key="CLIENT_ID")
-    
-    def client_full_flight_data(self, client_ids=None):
+        stand_data = self.stand_full_data(stand_ids, json_out=json_out)
+        return self.data_view(stand_data, "CLIENT_ID", json_out=json_out)
+
+    def client_flights_full_data(self, client_ids=None, json_out=True):
         client_ids = self.get_ids("clients", client_ids)
         flight_ids = self.where_table_in(
             "flights", "CLIENT_ID", client_ids, "FLIGHT_ID"
         )
         flight_ids = flight_ids["FLIGHT_ID"].tolist()
-        flight_data = self.full_flight_data(flight_ids)
-        return self.data_view(flight_data, "CLIENT_ID")
-    
+        flight_data = self.flight_full_data(flight_ids)
+        return self.data_view(flight_data, "CLIENT_ID", json_out=json_out)
+
     # PROJECT queries
 
-    def project_stands(self, project_ids=None):
+    def projects(self, project_ids=None, json_out=True):
+        return self.get_table_by_ids("projects", project_ids, json_out)
+
+    def project_stands(self, project_ids=None, json_out=True):
         """
         Retrieves all stands for specified projects.
 
@@ -389,8 +417,8 @@ class AeroDB:
             "projects", "PROJECT_ID", project_ids
         )
         projects = projects.to_dict("records")
-        stands = {}
-        for project in projects:
+        stands = []
+        for i, project in enumerate(projects):
             project_stand_list = project["STAND_PERSISTENT_IDS"]
             if len(project_stand_list) == 0 or project_stand_list is None:
                 continue
@@ -399,10 +427,11 @@ class AeroDB:
                 "stands", "STAND_PERSISTENT_ID", project_stand_list
             )
             for ps in project_stands.to_dict("records"):
-                stands[ps["STAND_PERSISTENT_ID"]] = ps
-        return stands
+                ps = {**ps, **project}
+                stands.append(ps)
+        return self.data_view(stands, key="PROJECT_ID", json_out=json_out)
 
-    def project_full_stand_data(self, project_ids=None):
+    def project_stands_full_data(self, project_ids=None, json_out=True):
         """
         Retrieves full stand data for the specified projects, including associated clients.
         If no projects are specified, retrieves data for all projects.
@@ -422,24 +451,29 @@ class AeroDB:
             if sid is None or sid == "":
                 continue
             stand_ids.extend(sid.split(","))
-        stand_data = self.full_stand_data(stand_ids)
-        return self.data_view(stand_data, key="CLIENT_ID")
-    
-    def project_full_flight_data(self, project_ids=None):
+        stand_data = self.stand_full_data(stand_ids)
+        return self.data_view(stand_data, key="PROJECT_ID", json_out=json_out)
+
+    def project_flights_full_data(self, project_ids=None, json_out=True):
         project_ids = self.get_ids("projects", project_ids)
         flight_ids = self.where_table_in(
-            "flights", "PROJECT_ID", project_ids, "FLIGHT_ID"
+            "flights", "PROJECT_ID", project_ids, "FLIGHT_ID",
         )
         flight_ids = flight_ids["FLIGHT_ID"].tolist()
-        flight_data = self.full_flight_data(flight_ids)
-        return self.data_view(flight_data, "PROJECT_ID")
+        flight_data = self.flight_full_data(flight_ids)
+        return self.data_view(flight_data, "PROJECT_ID", json_out=json_out)
 
     # STAND queries
 
-    def stand_flights(self, stand_ids=None):
+    def stands(self, stand_ids=None, json_out=True):
+        return self.get_table_by_ids("stands", stand_ids, json_out)
+
+    def stand_flights_full_data(self, stand_ids=None, json_out=True):
         stand_ids = self.get_ids("stands", stand_ids)
-        stands = self.where_table_in("stands", "STAND_PERSISTENT_ID", stand_ids)
+        stands = self.where_table_in(
+            "stands", "STAND_PERSISTENT_ID", stand_ids)
         stands = stands.to_dict("records")
+        stand_flights = []
         for i in range(len(stands)):
             query = {
                 "table": "flights",
@@ -457,10 +491,14 @@ class AeroDB:
                     }
                 ]
             }
-            stands[i]["flights"] = self.query_from_json(query, json_out=True)
-        return stands
+            flights = self.query_from_json(query, json_out=False)
+            flight_ids = flights["FLIGHT_ID"].tolist()
+            for flight in self.flight_full_data(flight_ids=flight_ids, json_out=True):
+                stand_flight = {**stands[i], **flight}
+                stand_flights.append(stand_flight)
+        return self.data_view(stand_flights, key="STAND_PERSISTENT_ID", json_out=json_out)
 
-    def full_stand_data(self, stand_ids=None):
+    def stand_full_data(self, stand_ids=None, json_out=True):
         """
         Retrieves all data for specified stands, including associated clients and projects.
 
@@ -484,17 +522,18 @@ class AeroDB:
             ).to_dict("records")
             if len(project) == 0:
                 continue
-            stands[i] = {**stands[i], **project[0]}
-        return stands
+            client = self.where_table_equal(
+                "clients", "CLIENT_ID", stands[i]["CLIENT_ID"]
+            ).to_dict("records")
+            stands[i] = {**stands[i], **project[0], **client[0]}
+        return self.handle_output(stands, json_out=json_out)
 
     # FLIGHT queries
 
-    def flight_data(self, flight_ids=None):
-        flight_ids = self.get_ids("flights", flight_ids)
-        flights = self.where_table_in("flights", "FLIGHT_ID", flight_ids)
-        return flights.to_dict("records")
+    def flights(self, flight_ids=None, json_out=True):
+        return self.get_table_by_ids("flights", flight_ids, json_out)
 
-    def full_flight_data(self, flight_ids=None):
+    def flight_full_data(self, flight_ids=None, json_out=True):
         flight_ids = self.get_ids("flights", flight_ids)
         flights = self.where_table_in("flights", "FLIGHT_ID", flight_ids)
         flights = flights.to_dict("records")
@@ -518,11 +557,20 @@ class AeroDB:
                 **flights[i], **flight_ai, **flight_files,
                 **stand, **client, **project
             }
-        return flights
+        return self.handle_output(flights, json_out=json_out)
 
     # data filtering/sorting/management
 
-    def data_view(self, data=None, key=None, cols=None):
+    def mask_expr_from_json(self, json_filter):
+        expr = ''
+        for obj in json_filter:
+            if "op" in obj:
+                expr += f'{obj["op"]} '
+            expr += f'({obj["col"]} {obj["clause"]} {obj["val"]}) '
+        expr = expr.rstrip('and ').rstrip('or ')
+        return expr
+
+    def data_view(self, data=None, key=None, cols=None, json_out=True):
         """
         Creates a view of the stand data, grouped by a specified key.
 
@@ -534,25 +582,62 @@ class AeroDB:
         Returns:
         dict: A dictionary mapping keys to a list of stand data.
         """
-        if data is None:
-            data = self.full_stand_data()
-        if key is None:
-            return data
-        data = pd.DataFrame(data)
-        if cols is not None and isinstance(cols, list):
-            if key not in cols:
-                cols.append(key)
-            data = data[cols]
-        uniq = data[key].unique().tolist()
-        view = {}
-        for val in uniq:
-            sel = data[data[key] == val]
-            sel = sel.to_dict("records")
-            view[val] = sel
-        return view
-    
+        if data is None or len(data) == 0:
+            data = self.flight_full_data()
+        return self.handle_output(data, json_out=json_out)
+        # if key is None or len(key) == 0:
+        #     return data
+        # data = pd.DataFrame(data)
+        # if cols is not None and isinstance(cols, list) and len(cols) > 0:
+        #     if key not in cols:
+        #         cols.append(key)
+        #     data = data[cols]
+        # uniq = data[key].unique().tolist()
+        # view = {}
+        # for val in uniq:
+        #     sel = data[data[key] == val]
+        #     sel = sel.to_dict("records")
+        #     view[val] = sel
+        # return self.handle_output(view, json_out=json_out)
+
+    def data_filter(self, json_filter, data=None, json_out=True):
+        if data is None or len(data) == 0:
+            data = self.flight_full_data()
+        if len(json_filter) > 0:
+            mask_expr = self.mask_expr_from_json(json_filter)
+            mask = data.eval(mask_expr)
+            data = data[mask]
+        return self.handle_output(data, json_out=json_out)
+
+
+def list_aerodb_fns():
+    import inspect
+    public_prefs = [
+        "client",
+        "project",
+        "stand",
+        "flight",
+        "data"
+    ]
+    fn_names = []
+    # Retrieve all methods of the AeroDB class
+    functions = inspect.getmembers(AeroDB, predicate=inspect.isfunction)
+    # For each method in AeroDB, create a Flask endpoint unless it's a
+    # private method
+    for fn_name, _ in functions:
+        public = False
+        for pref in public_prefs:
+            if fn_name.startswith(pref):
+                public = True
+                break
+        if not public:
+            continue
+        fn_names.append(fn_name)
+    return fn_names
+
+
 if __name__ == "__main__":
     import json
     db = AeroDB()
-    data = db.flight_data()
-    print(json.dumps(data, indent=4))
+    data = db.stand_flights_full_data(json_out=False)
+    print(data)

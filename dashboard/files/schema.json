@@ -1,0 +1,180 @@
+{
+    "client": {
+        "description": "View Client Data",
+        "functions": {
+            "clients": {
+                "description": "View Client Data",
+                "form": {
+                    "client_ids": [],
+                    "json_out": true
+                },
+                "selection_groups": {
+                    "Name, ID, Category": [
+                        "CATEGORY", "CLIENT_ID", "CLIENT_NAME"
+                    ]
+                }
+            },
+            "client_projects": {
+                "description": "View Projects by Client",
+                "form": {
+                    "client_ids": [],
+                    "json_out": true
+                },
+                "selection_groups": {
+                    "Names, IDS, Notes, Questions": [
+                        "CATEGORY", "CLIENT_ID", "CLIENT_NAME", "PROJECT_ID",
+                        "PROJECT_NAME", "PROJECT_NOTES", "PROJECT_QUESTIONS",
+                        "STAND_PERSISTENT_IDS"
+                    ],
+                    "Names, IDs, Dates": [
+                        "CATEGORY", "CLIENT_ID", "CLIENT_NAME", "PROJECT_ID",
+                        "PROJECT_NAME", "PROJECT_CREATION_DATA"
+                    ]
+                }
+            },
+            "client_stands_full_data": {
+                "description": "View Stands by Client",
+                "form": {
+                    "client_ids": [],
+                    "json_out": true
+                },
+                "selection_groups": {
+                    "Names and IDs": [
+                        "CLIENT_ID", "CLIENT_NAME", "PROJECT_ID", 
+                        "PROJECT_NAME", "STAND_ID", "STAND_PERSISTENT_ID"
+                    ]
+                }
+            },
+            "client_flights_full_data": {
+                "description": "View Full Flight Data by Client",
+                "form": {
+                    "client_ids": [],
+                    "json_out": true
+                },
+                "selection_groups": {
+                    "Flight Shape Files": [
+                        "FLIGHT_ID", "PROJECT_ID", "CLIENT_ID", "STAND_NAME",
+                        "INDIVIDUAL_SHP_NAS", "KML_NAS", "POLYGON_DD", "SHP_NAS",
+                        "GRIS_QA_NAS"
+                    ],
+                    "Flight Image Files": [
+                        "FLIGHT_ID", "PROJECT_ID", "CLIENT_ID", "STAND_NAME", "NAS_FOLDERS", 
+                        "FLIGHT_PLANS_NAS", "FLIGHT_IMAGES_DELIVERD", "RAW_IMAGES_NAS", 
+                        "FLIGHT_IMAGES_DD", "ORTHO_4IN_NAS", "ORTHO_DD_NAS", "ORTHO_PIX4D_NAS"
+                    ],
+                    "AI Info": [
+                        "FLIGHT_ID", "PROJECT_ID", "CLIENT_ID", "STAND_NAME",
+                        "TRAINING_READY", "TRAINING_DONE", "AI_READY", "AI_OUTPUT",
+                        "AI_RESULT_MODELED", "AI_TPA", "AI_TREE_COUNT_BROWN",
+                        "AI_TREE_COUNT_RED", "CLEANED_AI_TO_PRODUCTS"
+                    ],
+                    "QC Info": [
+                        "FLIGHT_ID", "PROJECT_ID", "CLIENT_ID", "STAND_NAME",
+                        "AI_OUTPUT", "QC_READY", "QC_PLOT_TPA", "QC_APPROVED",
+                        "GRID_QA_NAS", "QA_DONE"
+                    ]
+                }
+            }
+        }
+    },
+    "project": {
+        "description": "View Project Data",
+        "functions": {
+            "projects": {
+                "description": "View Project Data",
+                "form": {
+                    "project_ids": [],
+                    "json_out": true
+                }
+            },
+            "project_stands": {
+                "description": "View Stand Data by Project",
+                "form": {
+                    "project_ids": [],
+                    "json_out": true
+                }
+            },
+            "project_stands_full_data": {
+                "description": "View Full Stand Data by Project",
+                "form": {
+                    "project_ids": [],
+                    "json_out": true
+                }
+            },
+            "project_flights_full_data": {
+                "description": "View Full Flight Data by Project",
+                "form": {
+                    "project_ids": [],
+                    "json_out": true
+                }
+            }
+        }
+    },
+    "stand": {
+        "description": "View Stand Data",
+        "functions": {
+            "stands": {
+                "description": "View Stand Data",
+                "form": {
+                    "stand_ids": [],
+                    "json_out": true
+                }
+            },
+            "stand_full_data": {
+                "description": "View Full Stand Data",
+                "form": {
+                    "stand_ids": [],
+                    "json_out": true
+                }
+            },
+            "stand_flights_full_data": {
+                "description": "View Full Flight Data by Stand",
+                "form": {
+                    "stand_ids": [],
+                    "json_out": true
+                }
+            }
+        }
+    },
+    "flight": {
+        "description": "View Flight Data",
+        "functions": {
+            "flights": {
+                "description": "View Flight Data",
+                "form": {
+                    "flight_ids": [],
+                    "json_out": true
+                }
+            },
+            "flight_full_data": {
+                "description": "View Full Flight Data",
+                "form": {
+                    "flight_ids": [],
+                    "json_out": true
+                }
+            }
+        }
+    },
+    "data": {
+        "description": "Data Filtering",
+        "functions": {
+            "data_view": {
+                "description": "Reorganize Data by Given Key",
+                "form": {
+                    "data": {},
+                    "key": "",
+                    "cols": [],
+                    "json_out": true
+                }
+            },
+            "data_filter": {
+                "description": "Filter Data",
+                "form": {
+                    "json_filter": {},
+                    "data": {},
+                    "json_out": true
+                }
+            }
+        }
+    }
+}

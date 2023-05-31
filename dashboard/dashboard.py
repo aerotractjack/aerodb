@@ -2,62 +2,95 @@ from flask import Flask, render_template, jsonify, redirect, url_for, request
 import requests
 from datetime import datetime
 import json
+import pandas as pd
 import sys
+sys.path.append("/home/aerotract/software/aerotract_db/db")
+from aerodb import list_aerodb_fns
+
+def api_url(endpoint):
+    endpoint = endpoint.lstrip("/")
+    return f"http://127.0.0.1:5056/{endpoint}"
+
+def get_api(endpoint):
+    url = api_url(endpoint)
+    return lambda: requests.get(url)
+
+def get_fns_for(prefix):
+    fn_names = []
+    for fn_name in list_aerodb_fns():
+        if not fn_name.startswith(prefix):
+            continue
+        fn_names.append(fn_name)
+    return fn_names
+
+def load_schema():
+    with open("/home/aerotract/software/aerotract_db/dashboard/files/schema.json", "r") as fp:
+        return json.loads(fp.read())
+    
+def to_dataframe(data):
+    _df = lambda x: pd.DataFrame(x).to_html()
+    if isinstance(data, dict):
+        return {k: _df(v) for k,v in data.items()}
+    elif isinstance(data, list):
+        return {"data": _df(data)}
+    raise ValueError(f"I dont know how to convert type {type(data)} to dataframe")
+
+def to_tables(search, data):
+    tables = {}
+    column_names = []
+    if isinstance(data, list):
+        data = {search: data}
+    for k, v in data.items():
+        table = {"column_names": [], "data": []}
+        if len(v) > 0:
+            table["column_names"] = list(v[0].keys())
+            table["data"] = v
+        tables[k] = table
+        column_names = table["column_names"]
+    return tables, column_names
 
 app = Flask(__name__, template_folder="./templates")
 
+app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
+
+@app.after_request
+def add_header(response):
+    response.headers['Cache-Control'] = 'no-store'
+    return response
+
 @app.route("/health")
 def health():
-    return "healthy"
+    return f"{datetime.now()}"
 
 @app.route("/")
 @app.route("/home")
 def home():
-    return render_template("home.html")
+    home_views = {
+        "View Clients": "client",
+        "View Projects": "project",
+        "View Stands": "stand",
+        "View Flights": "flight",
+    }
+    return render_template("home.html", views=home_views)
 
-@app.route("/browse/clients")
-def browse_clients():
-    resp = requests.get("http://127.0.0.1:5056/api/clients").json()
-    return render_template("browse_clients.html", clients=resp)
+@app.route("/browse")
+def browse():
+    search = request.args.get('values')
+    schema = load_schema()
+    functions = schema[search]
+    return render_template("browse.html", data=functions, search=search)
 
-@app.route("/browse/projects", methods=["POST", "GET"])
-def browse_projects():
-    selected_client_ids = request.form.getlist("clientCheck")
-    url = "http://127.0.0.1:5056/api/projects"
-    params = {}
-    if len(selected_client_ids) == 0:
-        all_clients_ids = requests.get("http://127.0.0.1:5056/api/clients").json()
-        selected_client_ids = [str(c["CLIENT_ID"]) for c in all_clients_ids]
-    params = {"client_id": ",".join(selected_client_ids)}
-    cidmap = {}
-    for cid in selected_client_ids:
-        nameq = requests.get("http://127.0.0.1:5056/api/name/clients/" + str(cid)).json()
-        cidmap[cid] = nameq["name"]
-    resp = requests.get(url, params=params).json()
-    return render_template("browse_projects.html", projects=resp, client_id_map=cidmap)
-
-@app.route("/browse/stands", methods=["POST", "GET"])
-def browse_stands():
-    selected_project_ids = request.form.getlist("projectCheck")
-    url = "http://127.0.0.1:5056/api/stands"
-    params = {"project_id": ",".join(selected_project_ids)}
-    resp = requests.get(url, params=params).json()
-    pidmap = {}
-    for pid in selected_project_ids:
-        nameq = requests.get("http://127.0.0.1:5056/api/name/projects/" + str(pid)).json()
-        pidmap[pid] = nameq["name"]
-    return render_template("browse_stands.html", data=resp, project_id_map=pidmap)
-
-@app.route("/new/client")
-def new_client():
-    return render_template("new_client.html")
-
-@app.route("/new/client/submit", methods=["POST", "GET"])
-def new_client_submit():
-    body = dict(request.form)
-    resp = requests.post(
-        "http://127.0.0.1:5056/api/clients/new", data=body).json()
-    return render_template("client_added.html", data=resp)
+@app.route('/view/<api_endpoint>', methods=['POST'])
+def view(api_endpoint):
+    api_call = get_api(api_endpoint)
+    search = request.form.get("search")
+    data = api_call().json()
+    schema = load_schema()
+    desc = schema[search]["functions"][api_endpoint]["description"]
+    presets = schema[search]["functions"][api_endpoint].get("selection_groups", {})
+    data, column_names = to_tables(desc, data)
+    return render_template("datatables.html", tables=data, 
+                           column_names=column_names, presets=presets)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.10.25/css/jquery.dataTables.css">
+    <style>
+        /* Add custom styling for the tables */
+        .table-container {
+            margin-bottom: 20px;
+            border: 1px solid #ddd;
+            padding: 10px;
+        }
+
+        .table-container h2 {
+            margin-top: 0;
+        }
+
+        .table-container .datatable td {
+            word-wrap: break-word;
+            max-width: 40px;
+        }
+
+        h3 {
+            text-align: center;
+        }
+
+        .column-checkboxes {
+            margin-bottom: 20px;
+        }
+
+        .checkbox-grid {
+            background-color: #f5f5f5;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 5px;
+        }
+
+        .datatable {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .datatable th,
+        .datatable td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+
+        .datatable tr:nth-child(even) {
+            background-color: #f2f2f2;
+        }
+
+        .datatable th {
+            background-color: #4CAF50;
+            color: white;
+        }
+    </style>
+</head>
+
+<body>
+    {% block content %}
+    {% endblock %}
+
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.datatables.net/1.10.25/js/jquery.dataTables.js"></script>
+    <script>
+        function selectPreset(presetColumns) {
+            $('.column-checkbox').each(function () {
+                var columnName = $(this).parent().text().trim();
+                if (presetColumns.includes(columnName)) {
+                    $(this).prop('checked', true);
+                } else {
+                    $(this).prop('checked', false);
+                }
+                $(this).trigger('change');
+            });
+        }
+        $(document).ready(function () {
+            var datatables = {};
+
+            $('.datatable').each(function (i) {
+                var id = 'datatable-' + i;
+                $(this).attr('id', id);
+                datatables[id] = $(this).DataTable({
+                    dom: 'Blfrtip',
+                    columnDefs: [
+                        {
+                            targets: '_all',
+                            visible: true
+                        }
+                    ]
+                });
+            });
+
+            $('.column-checkbox').on('change', function () {
+                var checkboxIdParts = $(this).attr('id').split('-');
+                var tableId = 'datatable-' + checkboxIdParts[1];
+                var columnIndex = parseInt(checkboxIdParts[2]);
+                var targetTable = datatables[tableId];
+                targetTable.column(columnIndex).visible($(this).prop('checked'));
+            });
+        });
+    </script>
+
+
+</body>
+
+</html>
