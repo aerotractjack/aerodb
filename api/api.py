@@ -2,6 +2,7 @@ from flask import Flask, jsonify, request, Response
 import inspect
 import sys
 sys.path.append("/home/aerotract/software/aerotract_db/db")
+sys.stdout = sys.stderr
 from aerodb import AeroDB, list_aerodb_fns
 
 app = Flask(__name__)
@@ -12,6 +13,8 @@ app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 @app.after_request
 def add_header(response):
     response.headers['Cache-Control'] = 'no-store'
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Custom-Header'
     return response
 
 # This function dynamically generates a Flask endpoint function for a given 
@@ -33,8 +36,6 @@ def make_route_fn(fn_name):
 # This function builds Flask endpoints for all non-private methods of the 
 # AeroDB class
 def build_routes(app):
-    # Retrieve all methods of the AeroDB class
-    functions = inspect.getmembers(AeroDB, predicate=inspect.isfunction)
     # For each method in AeroDB, create a Flask endpoint unless it's a 
     # private method
     for fn_name in list_aerodb_fns():

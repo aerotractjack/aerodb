@@ -1,9 +1,11 @@
-from flask import Flask, render_template, jsonify, redirect, url_for, request
+from flask import Flask, render_template, jsonify, redirect, url_for, request, session
+from flask_cors import CORS
 import requests
 from datetime import datetime
 import json
 import pandas as pd
 import sys
+sys.stdout = sys.stderr
 sys.path.append("/home/aerotract/software/aerotract_db/db")
 from aerodb import list_aerodb_fns
 
@@ -37,19 +39,21 @@ def to_dataframe(data):
 
 def to_tables(search, data):
     tables = {}
-    column_names = []
+    column_names = set({})
     if isinstance(data, list):
         data = {search: data}
     for k, v in data.items():
-        table = {"column_names": [], "data": []}
+        table = {"column_names": set({}), "data": []}
         if len(v) > 0:
             table["column_names"] = list(v[0].keys())
             table["data"] = v
         tables[k] = table
-        column_names = table["column_names"]
-    return tables, column_names
+        for cn in table["column_names"]:
+            column_names.add(cn)
+    return tables, list(column_names)
 
 app = Flask(__name__, template_folder="./templates")
+CORS(app)
 
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 
@@ -66,10 +70,10 @@ def health():
 @app.route("/home")
 def home():
     home_views = {
-        "View Clients": "client",
-        "View Projects": "project",
-        "View Stands": "stand",
-        "View Flights": "flight",
+        "Browse Clients": "client",
+        "Browse Projects": "project",
+        "Browse Stands": "stand",
+        "Browse Flights": "flight",
     }
     return render_template("home.html", views=home_views)
 
@@ -80,17 +84,19 @@ def browse():
     functions = schema[search]
     return render_template("browse.html", data=functions, search=search)
 
-@app.route('/view/<api_endpoint>', methods=['POST'])
-def view(api_endpoint):
+@app.route('/view/<search_group>/<api_endpoint>', methods=['POST'])
+def view(search_group, api_endpoint):
     api_call = get_api(api_endpoint)
-    search = request.form.get("search")
     data = api_call().json()
     schema = load_schema()
-    desc = schema[search]["functions"][api_endpoint]["description"]
-    presets = schema[search]["functions"][api_endpoint].get("selection_groups", {})
+    desc = schema[search_group]["functions"][api_endpoint]["description"]
+    presets = schema[search_group]["functions"][api_endpoint].get("selection_groups", {})
+    editable = schema[search_group]["functions"][api_endpoint].get("editable", False)
     data, column_names = to_tables(desc, data)
-    return render_template("datatables.html", tables=data, 
-                           column_names=column_names, presets=presets)
+    for preset_name, columns in presets.items():
+        presets[preset_name] = ",".join(columns)
+    return render_template("datatables.html", tables=data, table=api_endpoint,
+                           column_names=column_names, presets=presets, editable=editable)
 
 
 if __name__ == "__main__":

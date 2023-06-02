@@ -55,12 +55,22 @@ class AeroDB:
         if json_out and isinstance(data, pd.DataFrame):
             data = data.to_dict("records")
         elif not json_out and isinstance(data, dict):
-            data = {k: pd.DataFrame(v) for k,v in data.items()}
+            data = {k: pd.DataFrame(v) for k, v in data.items()}
         elif not json_out and isinstance(data, list):
             data = pd.DataFrame(data)
         return data
 
     # query helper functions
+
+    def list_tables(self):
+        conn = self.con()
+        cursor = conn.cursor()
+        query = "SELECT name FROM sqlite_master WHERE type='table'"
+        cursor.execute(query)
+        tables = [table[0] for table in cursor.fetchall()]
+        cursor.close()
+        conn.close()
+        return tables
 
     def get_table(self, name, json_out=False):
         """
@@ -95,6 +105,16 @@ class AeroDB:
         data = pd.read_sql(query, conn, params=params)
         return self.handle_output(data, json_out)
 
+    def get_columns(self, table):
+        conn = self.con()
+        cursor = conn.cursor()
+        query = f"PRAGMA table_info({table})"
+        cursor.execute(query)
+        columns = [column[1] for column in cursor.fetchall()]
+        cursor.close()
+        conn.close()
+        return columns
+
     def get_id_col(self, table):
         """
         Returns the name of the ID column of the given table.
@@ -111,8 +131,12 @@ class AeroDB:
             return "PROJECT_ID"
         elif table == "stands":
             return "STAND_PERSISTENT_ID"
-        elif table in ["flights", "flight_ai", "flight_files"]:
+        elif table == "flights":
             return "FLIGHT_ID"
+        elif table == "flight_ai":
+            return "AI_FLIGHT_ID"
+        elif table == "flight_files":
+            return "FILES_FLIGHT_ID"
         raise ValueError(f"No table: {table}")
 
     def get_name_col(self, table):
@@ -354,7 +378,8 @@ class AeroDB:
         dict: A dictionary mapping client IDs to a list of their projects.
         """
         client_ids = self.get_ids("clients", client_ids)
-        clients = self.where_table_in("clients", "CLIENT_ID", client_ids, json_out=True)
+        clients = self.where_table_in(
+            "clients", "CLIENT_ID", client_ids, json_out=True)
         projects = []
         for i in range(len(clients)):
             client_projects = self.where_table_equal(
@@ -550,9 +575,11 @@ class AeroDB:
             client = self.where_table_equal(
                 "clients", "CLIENT_ID", flights[i]["CLIENT_ID"]
             ).to_dict("records")[0]
-            project = self.where_table_equal(
-                "projects", "PROJECT_ID", flights[i]["PROJECT_ID"]
-            ).to_dict("records")[0]
+            project = {}
+            if flights[i]["PROJECT_ID"] != -1:
+                project = self.where_table_equal(
+                    "projects", "PROJECT_ID", flights[i]["PROJECT_ID"]
+                ).to_dict("records")[0]
             flights[i] = {
                 **flights[i], **flight_ai, **flight_files,
                 **stand, **client, **project
@@ -584,21 +611,21 @@ class AeroDB:
         """
         if data is None or len(data) == 0:
             data = self.flight_full_data()
-        return self.handle_output(data, json_out=json_out)
-        # if key is None or len(key) == 0:
-        #     return data
-        # data = pd.DataFrame(data)
-        # if cols is not None and isinstance(cols, list) and len(cols) > 0:
-        #     if key not in cols:
-        #         cols.append(key)
-        #     data = data[cols]
-        # uniq = data[key].unique().tolist()
-        # view = {}
-        # for val in uniq:
-        #     sel = data[data[key] == val]
-        #     sel = sel.to_dict("records")
-        #     view[val] = sel
-        # return self.handle_output(view, json_out=json_out)
+        # return self.handle_output(data, json_out=json_out)
+        if key is None or len(key) == 0:
+            return data
+        data = pd.DataFrame(data)
+        if cols is not None and isinstance(cols, list) and len(cols) > 0:
+            if key not in cols:
+                cols.append(key)
+            data = data[cols]
+        uniq = data[key].unique().tolist()
+        view = {}
+        for val in uniq:
+            sel = data[data[key] == val]
+            sel = sel.to_dict("records")
+            view[val] = sel
+        return self.handle_output(view, json_out=json_out)
 
     def data_filter(self, json_filter, data=None, json_out=True):
         if data is None or len(data) == 0:
@@ -609,6 +636,33 @@ class AeroDB:
             data = data[mask]
         return self.handle_output(data, json_out=json_out)
 
+    # UPDATE methods
+
+    def update(self, table=None, orig_data=None, data=None, json_out=True):
+        id_col = self.get_id_col(table)
+        entry = self.where_table_equal(
+            table, id_col, orig_data[id_col], json_out=True)[0]
+        update_cols = []
+        update_vals = []
+        for k in data.keys():
+            if str(entry[k]) == str(data[k]):
+                continue
+            update_cols.append(k)
+            update_vals.append(data[k])
+        query = f"UPDATE {table} SET "
+        for i in range(len(update_cols)):
+            query += f"{update_cols[i]} = ?"
+            if i < len(update_cols) - 1:
+                query += ", "
+        query += f" WHERE {id_col} = ?"
+        update_values = tuple(update_vals + [entry[id_col]])
+        conn = self.con()
+        cursor = conn.cursor()
+        cursor.execute(query, update_values)
+        conn.commit()
+        cursor.close()
+        conn.close()
+
 
 def list_aerodb_fns():
     import inspect
@@ -617,7 +671,8 @@ def list_aerodb_fns():
         "project",
         "stand",
         "flight",
-        "data"
+        "data",
+        "update",
     ]
     fn_names = []
     # Retrieve all methods of the AeroDB class
@@ -639,5 +694,5 @@ def list_aerodb_fns():
 if __name__ == "__main__":
     import json
     db = AeroDB()
-    data = db.stand_flights_full_data(json_out=False)
+    data = db.list_tables()
     print(data)

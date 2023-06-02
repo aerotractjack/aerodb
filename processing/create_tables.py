@@ -1,6 +1,7 @@
 import pandas as pd
 import sqlite3
 from sqlalchemy import (create_engine, BigInteger, Float, Date, String, Boolean)
+from uuid import uuid4
 
 def get_engine(table_name="aerodb"):
     # use an engine to write out a DF to SQL
@@ -174,10 +175,14 @@ def create_flight_ai_db(raw_data_path="data/projectmeta-raw.csv"):
     dtypes = [Boolean, Boolean,
               Boolean, String(255), Boolean, Boolean, Boolean,
               Float, Float, Float, Float,
-              Boolean, Boolean]
+              Boolean, Boolean,
+              BigInteger]
     df = df[table_cols]
+    df[df.index.name] = df.index
+    df["AI_FLIGHT_ID"] = list(range(df.shape[0]))
+    df.set_index("AI_FLIGHT_ID", inplace=True)
     dtypes_map = {c: d for c,d in zip(df.columns, dtypes)}
-    df.to_sql('flight_ai', con=get_engine(), if_exists='replace', dtype=dtypes_map, index_label="FLIGHT_ID")
+    df.to_sql('flight_ai', con=get_engine(), if_exists='replace', dtype=dtypes_map, index_label="AI_FLIGHT_ID")
 
 def create_flight_files_db(raw_data_path="data/projectmeta-raw.csv"):
     df = load_and_process_metadata(raw_data_path)
@@ -190,11 +195,15 @@ def create_flight_files_db(raw_data_path="data/projectmeta-raw.csv"):
         Boolean, Boolean, Boolean, Boolean, Boolean,
         Boolean, Boolean, Boolean, Boolean,
         Boolean, Boolean, Boolean, Boolean,
-        Boolean, Boolean, String(255), Boolean
+        Boolean, Boolean, String(255), Boolean,
+        BigInteger
     ]
     df = df[table_cols]
+    df["FILES_FLIGHT_ID"] = list(range(df.shape[0]))
+    df[df.index.name] = df.index
+    df.set_index("FILES_FLIGHT_ID", inplace=True)
     dtypes_map = {c: d for c,d in zip(df.columns, dtypes)}
-    df.to_sql('flight_files', con=get_engine(), if_exists='replace', dtype=dtypes_map, index_label="FLIGHT_ID")
+    df.to_sql('flight_files', con=get_engine(), if_exists='replace', dtype=dtypes_map, index_label="FILES_FLIGHT_ID")
 
 def check_columns():
     meta = load_and_process_metadata()

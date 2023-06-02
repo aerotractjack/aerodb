@@ -2,13 +2,19 @@
 <html>
 
 <head>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/jqueryui/1.12.1/jquery-ui.css">
     <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.10.25/css/jquery.dataTables.css">
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.js"></script>
+    <script src="https://cdn.datatables.net/1.10.25/js/jquery.dataTables.js"></script>
     <style>
         /* Add custom styling for the tables */
         .table-container {
             margin-bottom: 20px;
             border: 1px solid #ddd;
             padding: 10px;
+            overflow-x: auto;
+            width: 100%;
         }
 
         .table-container h2 {
@@ -39,19 +45,26 @@
         }
 
         .datatable {
-            width: 100%;
             border-collapse: collapse;
+            table-layout: fixed;
+            min-width: 100%;
+            width: auto;
+            table-layout: fixed;
         }
 
         .datatable th,
         .datatable td {
-            border: 1px solid #ddd;
-            padding: 8px;
-            text-align: left;
+            width: 50px;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
+
         .datatable tr:nth-child(even) {
-            background-color: #f2f2f2;
+            background-color: #d4d4d4;
+            border-bottom: 2px solid #000;
+            /* change the color and size as per your preference */
+
         }
 
         .datatable th {
@@ -62,25 +75,46 @@
 </head>
 
 <body>
+
+    {% block popup %}
+    {% endblock %}
+
     {% block content %}
     {% endblock %}
 
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <script src="https://cdn.datatables.net/1.10.25/js/jquery.dataTables.js"></script>
     <script>
-        function selectPreset(presetColumns) {
-            $('.column-checkbox').each(function () {
-                var columnName = $(this).parent().text().trim();
-                if (presetColumns.includes(columnName)) {
-                    $(this).prop('checked', true);
-                } else {
-                    $(this).prop('checked', false);
-                }
-                $(this).trigger('change');
+
+        document.querySelectorAll('.column-checkbox').forEach(checkbox => {
+            checkbox.addEventListener('change', function () {
+                let columnName = this.dataset.columnName;
+                document.querySelectorAll('.' + columnName).forEach(element => {
+                    element.style.display = this.checked ? '' : 'none';
+                });
+            });
+        });
+
+        var datatables = {};
+
+        function adjustTableWidth() {
+            Object.keys(datatables).forEach(function (tableId) {
+                var targetTable = datatables[tableId];
+                var visibleColumns = targetTable.columns(':visible').count();
+                var tableContainer = document.getElementById(tableId);
+                tableContainer.style.width = (visibleColumns * 200) + 'px'; // Adjust the width factor (200px) based on your desired width per column
             });
         }
+
         $(document).ready(function () {
-            var datatables = {};
+            $("#dialog").dialog({
+                autoOpen: false,
+                width: 400,
+                buttons: {
+                    "Done Editing": function () {
+                        $(this).dialog("close");
+                        location.reload();
+                    }
+                }
+            });
 
             $('.datatable').each(function (i) {
                 var id = 'datatable-' + i;
@@ -92,10 +126,69 @@
                             targets: '_all',
                             visible: true
                         }
-                    ]
+                    ],
+                    drawCallback: function (settings) {
+                        var api = settings.oInstance.api();
+                        var numVisibleColumns = api.columns(':visible').count();
+                        $('#' + id).css('minWidth', numVisibleColumns * 50 + 'px');
+                    }
                 });
-            });
+                // Add double click event to rows
+                var editable = {{ editable|lower }}
+                if (editable) {
+                    $('.datatable').on('dblclick', 'tr', function () {
+                        var row = datatables[id].row(this).data();  // This gives you the data of the row as an array
+                        var columnNames = datatables[id].columns().header().toArray().map(function (header) {
+                            return $(header).html();
+                        });
 
+                        var form = $('<form action="http://127.0.0.1:5056/update" method="post"></form>');
+                        var orig_data = {};
+                        // Iterate over the keys in the data object
+                        for (var i = 0; i < row.length; i++) {
+                            // Create a label and input for each key/value pair and append it to the form
+                            form.append('<label for="' + columnNames[i] + '">' + columnNames[i] + '</label><br/>');
+                            form.append('<input type="text" id="' + columnNames[i] + '" name="' + columnNames[i] + '" value="' + row[i] + '"/><br/>');
+                            orig_data[columnNames[i]] = row[i]
+                        }
+
+                        // Append a Done button to the form
+                        form.append('<button type="button" id="doneButton">Submit Edit</button>');
+
+                        // Show the form in the dialog
+                        $("#dialog").html(form);
+                        $("#dialog").dialog("open");
+
+                        // Handle the click event of the Done button
+                        // Handle the click event of the Done button
+                        $("#doneButton").click(function (e) {
+                            e.preventDefault();  // Prevent the form from being submitted in the usual way
+
+                            // Convert form data to JSON
+                            var formData = {};
+                            $.each(form.serializeArray(), function (_, field) {
+                                formData[field.name] = field.value;
+                            });
+                            formData = {"orig_data": orig_data, "data": formData, "table": "{{ table }}", "json_out": true}
+                            // Submit the JSON data using AJAX
+                            $.ajax({
+                                type: 'POST',
+                                url: form.attr('action'),
+                                data: JSON.stringify(formData),
+                                contentType: 'application/json',
+                                success: function (response) {
+                                    // Close the dialog and reload the page
+                                    // $("#dialog").dialog("close");
+                                    // location.reload();
+                                }
+                            });
+                        });
+
+                    });
+                }
+
+
+            });
             $('.column-checkbox').on('change', function () {
                 var checkboxIdParts = $(this).attr('id').split('-');
                 var tableId = 'datatable-' + checkboxIdParts[1];
@@ -104,8 +197,8 @@
                 targetTable.column(columnIndex).visible($(this).prop('checked'));
             });
         });
-    </script>
 
+    </script>
 
 </body>
 

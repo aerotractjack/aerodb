@@ -1,32 +1,27 @@
 {% extends 'datatables_base.html' %}
 
+{% block popup %}
+<div id="dialog" title="Row Data" style="display:none;">
+    <pre id="json-content"></pre>
+</div>
+{% endblock %}
+
 {% block content %}
 <h3>{{ search }}</h3>
 
-<div class="presets">
-    <h3>Presets</h3>
-    {% for preset_name, columns in presets.items() %}
-        <button onclick="selectPreset({{ columns }})">{{ preset_name }}</button>
-    {% endfor %}
-</div>
-
 <div class="column-checkboxes">
     <h3>Column Visibility</h3>
-    <div class="checkbox-grid">  <!-- New wrapper div -->
-        {% for _, table_data in tables.items() %}
-            {% set outer_loop_index = loop.index0 %}
-            {% for column_name in table_data.column_names %}
-                <div class="checkbox-wrapper">
-                    <label>
-                        <input type="checkbox" class="column-checkbox" id="checkbox-{{ outer_loop_index }}-{{ loop.index0 }}" data-column-name="{{ column_name }}" checked> {{ column_name }}
-                    </label>
-                </div>
-            {% endfor %}
+    <div class="checkbox-grid">
+        {% for column_name in column_names %}
+        <div class="checkbox-wrapper">
+            <label>
+                <input type="checkbox" class="column-checkbox" id="checkbox-{{ loop.index0 }}"
+                    data-column-name="{{ column_name }}" checked> {{ column_name }}
+            </label>
+        </div>
         {% endfor %}
     </div>
 </div>
-
-
 
 <div class="content-wrapper">
     {% for table_name, table_data in tables.items() %}
@@ -36,7 +31,7 @@
             <thead>
                 <tr>
                     {% for column_name in table_data.column_names %}
-                    <th>{{ column_name }}</th>
+                    <th class="{{ column_name }}">{{ column_name }}</th>
                     {% endfor %}
                 </tr>
             </thead>
@@ -44,7 +39,7 @@
                 {% for row in table_data.data %}
                 <tr>
                     {% for column_name in table_data.column_names %}
-                    <td>{{ row[column_name] }}</td>
+                        <td class="{{ column_name }}">{{ row[column_name] }}</td>
                     {% endfor %}
                 </tr>
                 {% endfor %}
@@ -53,4 +48,5 @@
     </div>
     {% endfor %}
 </div>
+
 {% endblock %}
